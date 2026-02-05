@@ -1,0 +1,15 @@
+{
+    "name": "lootify-stock-scraper",
+    "version": "1.0.0",
+    "description": "Scrapes gamersberg.com stock page and serves it as a JSON API for Lootify",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "node server.js"
+    },
+    "dependencies": {
+        "express": "^4.18.2",
+        "puppeteer": "^22.0.0",
+        "node-fetch": "^2.7.0"
+    }
+}
