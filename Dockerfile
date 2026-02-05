@@ -1,6 +1,5 @@
 FROM node:20-slim
 
-# Install Chrome dependencies
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     wget ca-certificates fonts-liberation libasound2 libatk-bridge2.0-0 \
@@ -12,7 +11,7 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY package.json ./
+COPY package.json package-lock.json ./
 RUN npm ci --only=production
 
 COPY server.js ./
