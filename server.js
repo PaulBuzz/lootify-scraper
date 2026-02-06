@@ -4,6 +4,20 @@ const { scrapeStock } = require('./scraper-hybrid');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Add CORS headers to allow requests from anywhere
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type');
+
+    // Handle preflight
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+
+    next();
+});
+
 // --- Config ---
 const SCRAPE_INTERVAL_MS = 12000; // 12 seconds (game restocks every 5 min, so this is plenty)
 const STALE_THRESHOLD_MS = 60000; // if cache is >60s old, mark as stale in response
