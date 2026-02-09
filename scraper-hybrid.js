@@ -61,32 +61,57 @@ async function scrapeStock() {
 
         const fetch = (await import('node-fetch')).default;
 
+        // Fetch images from growagarden.gg (in parallel with other requests)
+        let imageData = {};
+        const imagePromise = (async () => {
+            try {
+                const imgRes = await fetch('https://growagarden.gg/api/stock', {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Accept': 'application/json'
+                    },
+                    timeout: 8000  // 8 second timeout
+                });
+                if (imgRes.ok) {
+                    const imgData = await imgRes.json();
+                    if (imgData.imageData) {
+                        imageData = imgData.imageData;
+                        console.log('[scraper] ✅ Images fetched:', Object.keys(imageData).length);
+                    }
+                }
+            } catch (err) {
+                console.warn('[scraper] ⚠ Image fetch failed:', err.message);
+            }
+        })();
+
         // Fetch timers from Vulcan (no auth needed, always accurate)
         let vulcanTimers = null;
-        try {
-            const vulcanRes = await fetch(VULCAN_API, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Accept': 'application/json'
+        const vulcanPromise = (async () => {
+            try {
+                const vulcanRes = await fetch(VULCAN_API, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Accept': 'application/json'
+                    }
+                });
+                if (vulcanRes.ok) {
+                    const vulcanData = await vulcanRes.json();
+                    if (vulcanData.success && vulcanData.data) {
+                        vulcanTimers = {
+                            seeds: vulcanData.data.seedsTimer * 1000 || 300000,
+                            gears: vulcanData.data.gearTimer * 1000 || 300000,
+                            eggs: vulcanData.data.eggsTimer * 1000 || 1800000,
+                            event: vulcanData.data.eventTimer * 1000 || 300000,
+                            // Cosmetics: Vulcan might not have this, use 3h as fallback
+                            cosmetics: 10800000  // 3 hours
+                        };
+                        console.log('[scraper] ✅ Vulcan timers fetched');
+                    }
                 }
-            });
-            if (vulcanRes.ok) {
-                const vulcanData = await vulcanRes.json();
-                if (vulcanData.success && vulcanData.data) {
-                    vulcanTimers = {
-                        seeds: vulcanData.data.seedsTimer * 1000 || 300000,
-                        gears: vulcanData.data.gearTimer * 1000 || 300000,
-                        eggs: vulcanData.data.eggsTimer * 1000 || 1800000,
-                        event: vulcanData.data.eventTimer * 1000 || 300000,
-                        // Cosmetics: Vulcan might not have this, use 3h as fallback
-                        cosmetics: 10800000  // 3 hours
-                    };
-                    console.log('[scraper] ✅ Vulcan timers fetched');
-                }
+            } catch (err) {
+                console.warn('[scraper] ⚠ Vulcan fetch failed, using defaults:', err.message);
             }
-        } catch (err) {
-            console.warn('[scraper] ⚠ Vulcan fetch failed, using defaults:', err.message);
-        }
+        })();
 
         // Fetch stock data from gamersberg
         const response = await fetch(API_URL, {
@@ -118,7 +143,11 @@ async function scrapeStock() {
             }
 
             const json = await response2.json();
-            return transformData(json, vulcanTimers);
+
+            // Wait for images and vulcan to finish
+            await Promise.all([imagePromise, vulcanPromise]);
+
+            return transformData(json, vulcanTimers, imageData);
         }
 
         if (!response.ok) {
@@ -126,7 +155,11 @@ async function scrapeStock() {
         }
 
         const json = await response.json();
-        return transformData(json, vulcanTimers);
+
+        // Wait for images and vulcan to finish
+        await Promise.all([imagePromise, vulcanPromise]);
+
+        return transformData(json, vulcanTimers, imageData);
 
     } catch (error) {
         console.error('[scraper] ❌ Fetch failed:', error.message);
@@ -134,7 +167,7 @@ async function scrapeStock() {
     }
 }
 
-function transformData(json, vulcanTimers) {
+function transformData(json, vulcanTimers, imageData = {}) {
     if (!json.success || !json.data || json.data.length === 0) {
         throw new Error('API returned unsuccessful or empty data');
     }
@@ -152,6 +185,7 @@ function transformData(json, vulcanTimers) {
         restockTimers: {},
         weather: null,
         zenEvent: null,
+        imageData: imageData,  // Add images to result!
         lastUpdated: new Date(apiData.timestamp * 1000).toISOString()
     };
 
@@ -260,6 +294,7 @@ function transformData(json, vulcanTimers) {
 
     console.log('[scraper] ✅ API fetch successful');
     console.log(`[scraper] Items: Seeds=${result.seedsStock.length}, Gear=${result.gearStock.length}, Eggs=${result.eggStock.length}, Cosmetics=${result.cosmeticsStock.length}, Event=${result.eventStock.length}, Merchant=${result.merchantsStock.length}`);
+    console.log(`[scraper] Images: ${Object.keys(imageData).length} fetched`);
     console.log(`[scraper] Weather: ${result.weather?.type || 'unknown'}, Timers: seeds=${Math.floor(result.restockTimers.seeds / 60000)}m, eggs=${Math.floor(result.restockTimers.eggs / 60000)}m, cosmetics=${Math.floor(result.restockTimers.cosmetics / 3600000)}h`);
 
     return result;
